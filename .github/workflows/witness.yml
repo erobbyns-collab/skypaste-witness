@@ -1,0 +1,38 @@
+name: Witness SkyPaste head
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  witness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch head from Worker
+        run: |
+          set -euo pipefail
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          HEAD_JSON=$(curl -s "https://skypaste-worker.robbyns68.workers.dev/api/head?tenant=default-tenant")
+          echo "Worker response: $HEAD_JSON"
+
+          ENTRY=$(echo "$HEAD_JSON" | jq -c --arg ts "$TIMESTAMP" '. + {githubWitnessedAt: $ts}')
+          echo "$ENTRY" >> witness-log.jsonl
+          echo "Appended: $ENTRY"
+
+      - name: Commit and push
+        run: |
+          git config user.name "skypaste-witness-bot"
+          git config user.email "witness@skypaste.local"
+          git add witness-log.jsonl
+          if git diff --cached --quiet; then
+            echo "No new entry to commit"
+          else
+            git commit -m "Witness $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push
+          fi
